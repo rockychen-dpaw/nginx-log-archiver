@@ -1,7 +1,7 @@
 [tool.poetry]
 name = "nginx-access-log-archiver"
 version = "0.1.0"
-description = ""
+description = "Utility for archiving the department's preserved Nginx access logs in the Parquet column-oriented data file format"
 authors = ["Ashley Felton <ashley@ropable.com>"]
 readme = "README.md"
 package-mode = false

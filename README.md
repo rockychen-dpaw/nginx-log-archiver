@@ -1,6 +1,6 @@
 # Nginx access log archiver
 
-This project contains utilities for archiving the department's preserved Nginx access logs in the
+This project contains a utility for archiving the department's preserved Nginx access logs in the
 [Parquet](https://parquet.apache.org/) column-oriented data file format for efficient storage.
 
 A number of OSS libraries exist for interacting with Parquet storage; this project makes use of PyArrow:
