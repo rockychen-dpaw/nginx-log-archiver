@@ -35,6 +35,7 @@ The following variables are required for the project to run:
 Example using PyArrow:
 
 ```python
+import pyarrow.parquet as pq
 import pyarrow.compute as pc
 
 table = pq.read_table("nginx_access_logs.parquet")
