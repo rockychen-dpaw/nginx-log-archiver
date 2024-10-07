@@ -31,7 +31,7 @@ azure_logger = logging.getLogger("azure")
 azure_logger.setLevel(logging.WARNING)
 
 
-def archive_logs(datestamp, container_name="access-logs"):
+def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     """Given the supplied datestamp string, download CSV-formatted Nginx access logs having this prefix,
     combine them into a single parquet dataset, upload the parquet dataset to the blob container,
     then delete the original CSV-formatted logs.
@@ -105,11 +105,12 @@ def archive_logs(datestamp, container_name="access-logs"):
     # Ensure that the uploaded blob's access tier is 'Cold'.
     blob_client.set_standard_blob_tier("Cold")
 
-    # Delete the original remote CSV log files.
-    for blob_name in csv_blobs:
-        logger.info(f"Deleting blob {blob_name}")
-        blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
-        blob_client.delete_blob(delete_snapshots="include")
+    if delete_source:
+        # Delete the original remote CSV log files.
+        for blob_name in csv_blobs:
+            logger.info(f"Deleting blob {blob_name}")
+            blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
+            blob_client.delete_blob(delete_snapshots="include")
 
 
 if __name__ == "__main__":
@@ -129,5 +130,11 @@ if __name__ == "__main__":
         action="store",
         required=False,
     )
+    parser.add_argument(
+        "--delete-source",
+        help="Delete the source CSV after processing (optional)",
+        action="store_true",
+        required=False,
+    )
     args = parser.parse_args()
-    archive_logs(datestamp=args.datestamp, container_name=args.container)
+    archive_logs(datestamp=args.datestamp, container_name=args.container, delete_source=args.delete_source)
