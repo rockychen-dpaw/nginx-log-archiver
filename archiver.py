@@ -46,6 +46,9 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
     blob_list = container_client.list_blobs(name_starts_with=datestamp)
     csv_blobs = [blob.name for blob in blob_list]
+    if not csv_blobs:  # Nil source data, abort.
+        logger.info(f"No source data for datestamp {datestamp}")
+        return
 
     csv_dir = TemporaryDirectory()
     schema = pa.schema(
