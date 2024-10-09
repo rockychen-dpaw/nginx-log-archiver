@@ -74,9 +74,14 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
         dest_path = os.path.join(csv_dir.name, blob_name)
         blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
 
-        with open(dest_path, "wb") as downloaded_blob:
-            download_stream = blob_client.download_blob()
-            downloaded_blob.write(download_stream.readall())
+        try:
+            with open(dest_path, "wb") as downloaded_blob:
+                download_stream = blob_client.download_blob()
+                downloaded_blob.write(download_stream.readall())
+        except Exception as e:
+            logger.error(f"Exception during download of {blob_name}, aborting")
+            logger.exception(e)
+            return
 
     csv_files = sorted(os.listdir(csv_dir.name))
 
