@@ -6,7 +6,7 @@ from datetime import datetime
 from tempfile import TemporaryDirectory
 
 import pyarrow as pa
-import pyarrow.dataset as ds
+import pyarrow.csv as pv
 import pyarrow.parquet as pq
 from azure.storage.blob import BlobClient, ContainerClient
 from dotenv import load_dotenv
@@ -31,6 +31,41 @@ azure_logger = logging.getLogger("azure")
 azure_logger.setLevel(logging.WARNING)
 
 
+def download_logs(datestamp, destination, container_name="access-logs"):
+    """Given the passed in datestamp and destination directory, download CSV blobs."""
+    container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
+    blob_list = container_client.list_blobs(name_starts_with=datestamp)
+    csv_blobs = [blob.name for blob in blob_list]
+    if not csv_blobs:  # Nil source data, abort.
+        logger.info(f"No source data for datestamp {datestamp}")
+        return
+
+    # Download CSVs
+    for blob_name in csv_blobs:
+        logger.info(f"Downloading {blob_name}")
+        dest_path = os.path.join(destination, blob_name)
+        blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
+
+        try:
+            with open(dest_path, "wb") as downloaded_blob:
+                download_stream = blob_client.download_blob()
+                downloaded_blob.write(download_stream.readall())
+        except Exception as e:
+            logger.error(f"Exception during download of {blob_name}, aborting")
+            logger.exception(e)
+            return
+
+    return True
+
+
+def invalid_row_handler(row):
+    """A callable to handle each CSV row that fails parsing based on the supplied schema.
+    Ref: https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html#pyarrow.csv.ParseOptions
+    """
+    logger.warning(f"BAD ROW:\n{row}")
+    return "error"
+
+
 def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     """Given the supplied datestamp string, download CSV-formatted Nginx access logs having this prefix,
     combine them into a single parquet dataset, upload the parquet dataset to the blob container,
@@ -50,59 +85,46 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
         logger.info(f"No source data for datestamp {datestamp}")
         return
 
+    # Use a temporary directory to download CSV logs into.
     csv_dir = TemporaryDirectory()
-    schema = pa.schema(
-        [
-            pa.field("timestamp", pa.timestamp("s", tz="Australia/Perth")),
-            pa.field("remote_ip", pa.string()),
-            pa.field("host", pa.string()),
-            pa.field("path", pa.string()),
-            pa.field("params", pa.string()),
-            pa.field("method", pa.string()),
-            pa.field("protocol", pa.string()),
-            pa.field("status", pa.int16()),
-            pa.field("request_time_µs", pa.int64()),
-            pa.field("bytes_sent", pa.int64()),
-            pa.field("user_agent", pa.string()),
-            pa.field("email", pa.string()),
-        ]
-    )
-
-    # Download CSVs
-    for blob_name in csv_blobs:
-        logger.info(f"Downloading {blob_name}")
-        dest_path = os.path.join(csv_dir.name, blob_name)
-        blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
-
-        try:
-            with open(dest_path, "wb") as downloaded_blob:
-                download_stream = blob_client.download_blob()
-                downloaded_blob.write(download_stream.readall())
-        except Exception as e:
-            logger.error(f"Exception during download of {blob_name}, aborting")
-            logger.exception(e)
-            return
+    downloaded = download_logs(datestamp, csv_dir.name)
+    if not downloaded:
+        return
 
     csv_files = sorted(os.listdir(csv_dir.name))
 
     # Prepend a header row in each CSV
     headers = "timestamp,remote_ip,host,path,params,method,protocol,status,request_time_µs,bytes_sent,user_agent,email"
     for csv_file in csv_files:
+        logger.info(f"Prepending header row in {csv_file}")
         path = os.path.join(csv_dir.name, csv_file)
         if os.path.getsize(path) > 0:
             os.system(f"sed -i '1s;^;{headers}\\n;' {path}")
         else:  # sed doesn't work for an empty source file.
             os.system(f"echo '{headers}' > {path}")
 
-    # Read the directory of CSVs in as a dataset, then convert to a table.
-    dataset = ds.dataset(csv_dir.name, schema=schema, format="csv")
-    table = dataset.to_table()
+    # Read each CSV in the directory in as a separate table.
+    tables = []
+    parse_options = pv.ParseOptions(newlines_in_values=True, invalid_row_handler=invalid_row_handler)
+    for csv_file in csv_files:
+        logger.info(f"Loading {csv_file}")
+        path = os.path.join(csv_dir.name, csv_file)
+        try:
+            table = pv.read_csv(path, parse_options=parse_options)
+            tables.append(table)
+        except Exception as e:
+            logger.warning(f"Exception while loading {csv_file}")
+            logger.warning(e)
+            return
 
-    # Output the dataset locally to a parquet file.
+    # Concat all the tables together.
+    combined_table = pa.concat_tables(tables)
+
+    # Output the combined table to a parquet file.
     pq_file = f"{datestamp}.nginx.access.parquet"
     pq_path = os.path.join(csv_dir.name, pq_file)
-    logger.info(f"Outputting dataset table to {pq_path}")
-    pq.write_table(table, pq_path)
+    logger.info(f"Outputting table to {pq_path}")
+    pq.write_table(combined_table, pq_path)
 
     # Upload the parquet file to the container.
     logger.info(f"Uploading to blob archive/{pq_file}")
