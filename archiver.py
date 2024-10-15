@@ -17,13 +17,13 @@ load_dotenv()
 CONN_STR = os.getenv("AZURE_CONNECTION_STRING")
 
 # Configure logging for the default logger and for the `azure` logger.
-logger = logging.getLogger()
-logger.setLevel(logging.DEBUG)
+LOGGER = logging.getLogger()
+LOGGER.setLevel(logging.DEBUG)
 formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
 handler = logging.StreamHandler(sys.stdout)
 handler.setLevel(logging.INFO)
 handler.setFormatter(formatter)
-logger.addHandler(handler)
+LOGGER.addHandler(handler)
 
 # Set the logging level for all azure-* libraries (the azure-storage-blob library uses this one).
 # Reference: https://learn.microsoft.com/en-us/azure/developer/python/sdk/azure-sdk-logging
@@ -37,12 +37,12 @@ def download_logs(datestamp, destination, container_name="access-logs"):
     blob_list = container_client.list_blobs(name_starts_with=datestamp)
     csv_blobs = [blob.name for blob in blob_list]
     if not csv_blobs:  # Nil source data, abort.
-        logger.info(f"No source data for datestamp {datestamp}")
+        LOGGER.info(f"No source data for datestamp {datestamp}")
         return
 
     # Download CSVs
     for blob_name in csv_blobs:
-        logger.info(f"Downloading {blob_name}")
+        LOGGER.info(f"Downloading {blob_name}")
         dest_path = os.path.join(destination, blob_name)
         blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
 
@@ -51,10 +51,23 @@ def download_logs(datestamp, destination, container_name="access-logs"):
                 download_stream = blob_client.download_blob()
                 downloaded_blob.write(download_stream.readall())
         except Exception as e:
-            logger.error(f"Exception during download of {blob_name}, aborting")
-            logger.exception(e)
+            LOGGER.error(f"Exception during download of {blob_name}, aborting")
+            LOGGER.exception(e)
             return
 
+    return True
+
+
+def prepend_header_row(path):
+    """Given the passed in CSV file path, prepend a header row."""
+    if os.path.getsize(path) > 0:
+        # Pass/abort on empty/null file (no data).
+        LOGGER.warning(f"Empty file/no data: {path}")
+        return False
+
+    headers = "timestamp,remote_ip,host,path,params,method,protocol,status,request_time_µs,bytes_sent,user_agent,email"
+    LOGGER.info(f"Prepending header row in {path}")
+    os.system(f"sed -i '1s;^;{headers}\\n;' {path}")
     return True
 
 
@@ -62,7 +75,7 @@ def invalid_row_handler(row):
     """A callable to handle each CSV row that fails parsing based on the supplied schema.
     Ref: https://arrow.apache.org/docs/python/generated/pyarrow.csv.ParseOptions.html#pyarrow.csv.ParseOptions
     """
-    logger.warning(f"BAD ROW:\n{row}")
+    LOGGER.warning(f"BAD ROW:\n{row}")
     return "error"
 
 
@@ -75,15 +88,17 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     try:
         datetime.strptime(datestamp, "%Y%m%d")
     except Exception as e:
-        logger.warning(f"Invalid datestamp value: {e}")
+        LOGGER.warning(f"Invalid datestamp value: {e}")
         return
 
     container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
     blob_list = container_client.list_blobs(name_starts_with=datestamp)
     csv_blobs = [blob.name for blob in blob_list]
     if not csv_blobs:  # Nil source data, abort.
-        logger.info(f"No source data for datestamp {datestamp}")
+        LOGGER.info(f"No source data for datestamp {datestamp}")
         return
+
+    LOGGER.info(f"Archiving logs for datestamp {datestamp}")
 
     # Use a temporary directory to download CSV logs into.
     csv_dir = TemporaryDirectory()
@@ -93,28 +108,24 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
 
     csv_files = sorted(os.listdir(csv_dir.name))
 
-    # Prepend a header row in each CSV
-    headers = "timestamp,remote_ip,host,path,params,method,protocol,status,request_time_µs,bytes_sent,user_agent,email"
-    for csv_file in csv_files:
-        logger.info(f"Prepending header row in {csv_file}")
-        path = os.path.join(csv_dir.name, csv_file)
-        if os.path.getsize(path) > 0:
-            os.system(f"sed -i '1s;^;{headers}\\n;' {path}")
-        else:  # sed doesn't work for an empty source file.
-            os.system(f"echo '{headers}' > {path}")
-
     # Read each CSV in the directory in as a separate table.
     tables = []
     parse_options = pv.ParseOptions(newlines_in_values=True, invalid_row_handler=invalid_row_handler)
     for csv_file in csv_files:
-        logger.info(f"Loading {csv_file}")
+        # Prepend a header row in each CSV
         path = os.path.join(csv_dir.name, csv_file)
+        result = prepend_header_row(path)
+        if not result:
+            LOGGER.info(f"Skipping {csv_file}")
+            continue
+
+        LOGGER.info(f"Loading {csv_file}")
         try:
             table = pv.read_csv(path, parse_options=parse_options)
             tables.append(table)
         except Exception as e:
-            logger.warning(f"Exception while loading {csv_file}")
-            logger.warning(e)
+            LOGGER.warning(f"Exception while loading {csv_file}")
+            LOGGER.warning(e)
             return
 
     # Concat all the tables together.
@@ -123,11 +134,11 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     # Output the combined table to a parquet file.
     pq_file = f"{datestamp}.nginx.access.parquet"
     pq_path = os.path.join(csv_dir.name, pq_file)
-    logger.info(f"Outputting table to {pq_path}")
+    LOGGER.info(f"Outputting table to {pq_path}")
     pq.write_table(combined_table, pq_path)
 
     # Upload the parquet file to the container.
-    logger.info(f"Uploading to blob archive/{pq_file}")
+    LOGGER.info(f"Uploading to blob archive/{pq_file}")
     blob_client = BlobClient.from_connection_string(CONN_STR, container_name, f"archive/{pq_file}")
     with open(pq_path, "rb") as source_data:
         blob_client.upload_blob(source_data, overwrite=True)
@@ -138,7 +149,7 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     if delete_source:
         # Delete the original remote CSV log files.
         for blob_name in csv_blobs:
-            logger.info(f"Deleting blob {blob_name}")
+            LOGGER.info(f"Deleting blob {blob_name}")
             blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
             blob_client.delete_blob(delete_snapshots="include")
 
