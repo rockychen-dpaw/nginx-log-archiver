@@ -60,7 +60,7 @@ def download_logs(datestamp, destination, container_name="access-logs"):
 
 def prepend_header_row(path):
     """Given the passed in CSV file path, prepend a header row."""
-    if os.path.getsize(path) > 0:
+    if os.path.getsize(path) <= 0:
         # Pass/abort on empty/null file (no data).
         LOGGER.warning(f"Empty file/no data: {path}")
         return False
