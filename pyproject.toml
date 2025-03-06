@@ -1,25 +1,26 @@
-[tool.poetry]
+[project]
 name = "nginx-access-log-archiver"
-version = "0.1.0"
+version = "1.0.0"
 description = "Utility for archiving the department's preserved Nginx access logs in the Parquet column-oriented data file format"
-authors = ["Ashley Felton <ashley@ropable.com>"]
+authors = [{ name = "Ashley Felton", email = "ashley.felton@dbca.wa.gov.au" }]
 readme = "README.md"
-package-mode = false
+license = "Apache-2.0"
+requires-python = ">=3.12,<4.0"
+dependencies = [
+  "python-dotenv==1.0.1",
+  "azure-storage-blob==12.24.1",
+  "pyarrow==19.0.1",
+]
 
-[tool.poetry.dependencies]
-python = "^3.12"
-azure-storage-blob = "^12.23.1"
-ipython = "^8.28.0"
-pyarrow = "^17.0.0"
-python-dotenv = "^1.0.1"
+[dependency-groups]
+dev = ["ipython >= 8.31.0"]
 
 [tool.ruff]
 line-length = 120
 indent-width = 4
 
 [tool.ruff.lint]
-ignore = ["E265", "E501", "E722"]
-
-[build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+ignore = [
+  "E501", # Line too long
+  "E722", # Bare except
+]

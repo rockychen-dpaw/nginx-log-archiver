@@ -1,6 +1,6 @@
 .python-version
-*.pyc
 .venv
 .env
+*.pyc
 *.parquet
 *.csv
