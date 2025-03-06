@@ -1,13 +1,13 @@
-name: "Build Docker image and run Trivy vulnerability scan"
+name: 'Build Docker image'
 
 on:
   push:
     # Publish `main` as `latest` image.
-    branches: [ main ]
-    # Publish `1.*` tags as releases.
-    tags: [ '1.*' ]
+    branches: [main]
+    # Publish tagged commits as releases.
+    tags: ['*']
   pull_request:
-    branches: [ main ]
+    branches: [main]
 
 env:
   REGISTRY: ghcr.io
@@ -61,6 +61,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+          platforms: linux/amd64,linux/arm64
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
