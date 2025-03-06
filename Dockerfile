@@ -1,30 +1,37 @@
 # syntax=docker/dockerfile:1
 # Prepare the base environment.
-FROM python:3.12.7-slim AS builder_base_archiver
+FROM python:3.12-slim-bookworm AS builder_base
+
+ENV UV_LINK_MODE=copy \
+  UV_COMPILE_BYTECODE=1 \
+  UV_PYTHON_DOWNLOADS=never \
+  UV_PROJECT_ENVIRONMENT=/app/.venv
+
+COPY --from=ghcr.io/astral-sh/uv:0.6 /uv /uvx /bin/
+COPY pyproject.toml uv.lock /_lock/
+RUN --mount=type=cache,target=/root/.cache \
+  cd /_lock && \
+  uv sync \
+  --frozen \
+  --no-group dev
+
+##################################################################################
+
+FROM python:3.12-slim-bookworm
 LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
 LABEL org.opencontainers.image.source=https://github.com/dbca-wa/nginx-log-archiver
 
-RUN apt-get update -y \
-  && apt-get upgrade -y \
-  && rm -rf /var/lib/apt/lists/* \
-  && pip install --root-user-action=ignore --no-cache-dir --upgrade pip
+# Create a non-root user.
+RUN groupadd -r -g 10001 app \
+  && useradd -r -u 10001 -d /app -g app -N app
 
-# Install Python libs using Poetry.
-FROM builder_base_archiver AS python_libs_archiver
-WORKDIR /app
-ARG POETRY_VERSION=1.8.3
-RUN pip install --root-user-action=ignore --no-cache-dir poetry==${POETRY_VERSION}
-COPY poetry.lock pyproject.toml ./
-RUN poetry config virtualenvs.create false \
-  && poetry install --no-interaction --no-ansi --only main
-
-# Set up a non-root user.
-ARG UID=10001
-ARG GID=10001
-RUN groupadd -g ${GID} appuser \
-  && useradd --no-create-home --no-log-init --uid ${UID} --gid ${GID} appuser
+COPY --from=builder_base --chown=app:app /app /app
+# Make sure we use the virtualenv by default
+ENV PATH="/app/.venv/bin:$PATH"
+# Run Python unbuffered
+ENV PYTHONUNBUFFERED=1
 
 # Install the project.
-FROM python_libs_archiver
+WORKDIR /app
 COPY archiver.py ./
-USER ${UID}
+USER app
