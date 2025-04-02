@@ -28,7 +28,7 @@ To run Python commands in the activated virtualenv, thereafter run them as norma
 This project uses **python-dotenv** to set environment variables (in a `.env` file).
 The following variables are required for the project to run:
 
-    AZURE_CONNECTION_STRING=MySecretAzureStorageAccountConnectionString
+    AZURE_STORAGE_CONNECTION_STRING=MySecretAzureStorageAccountConnectionString
 
 ## Querying / filtering Parquet files
 

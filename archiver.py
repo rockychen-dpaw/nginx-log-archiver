@@ -14,7 +14,7 @@ from dotenv import load_dotenv
 # Load environment variables.
 load_dotenv()
 # Assumes a connection string secret present as an environment variable.
-CONN_STR = os.getenv("AZURE_CONNECTION_STRING")
+CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 
 # Configure logging for the default logger and for the `azure` logger.
 LOGGER = logging.getLogger()
