@@ -33,5 +33,5 @@ ENV PYTHONUNBUFFERED=1
 
 # Install the project.
 WORKDIR /app
-COPY archiver.py ./
+COPY archiver.py consolidator.py utils.py ./
 USER app

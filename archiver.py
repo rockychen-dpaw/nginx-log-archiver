@@ -1,7 +1,5 @@
 import argparse
-import logging
 import os
-import sys
 from datetime import datetime
 from tempfile import TemporaryDirectory
 
@@ -11,28 +9,19 @@ import pyarrow.parquet as pq
 from azure.storage.blob import BlobClient, ContainerClient
 from dotenv import load_dotenv
 
+from utils import configure_logging
+
 # Load environment variables.
 load_dotenv()
 # Assumes a connection string secret present as an environment variable.
 CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 
-# Configure logging for the default logger and for the `azure` logger.
-LOGGER = logging.getLogger()
-LOGGER.setLevel(logging.DEBUG)
-formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
-handler.setFormatter(formatter)
-LOGGER.addHandler(handler)
-
-# Set the logging level for all azure-* libraries (the azure-storage-blob library uses this one).
-# Reference: https://learn.microsoft.com/en-us/azure/developer/python/sdk/azure-sdk-logging
-azure_logger = logging.getLogger("azure")
-azure_logger.setLevel(logging.WARNING)
+# Configure logging.
+LOGGER = configure_logging()
 
 
 def download_logs(datestamp, destination, container_name="access-logs"):
-    """Given the passed in datestamp and destination directory, download CSV blobs."""
+    """Given the passed in datestamp and destination directory, download logs from blob storage."""
     container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
     blob_list = container_client.list_blobs(name_starts_with=datestamp)
     csv_blobs = [blob.name for blob in blob_list]
@@ -155,7 +144,10 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(
+        description="""A script to archive CSV-formatted Nginx logs (one file per hour) as Parquet data files (one file per day).
+        Logs are moved within the same Blob container to having the prefix `archive`.""",
+    )
     parser.add_argument(
         "-d",
         "--datestamp",

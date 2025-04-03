@@ -10,18 +10,30 @@ A number of OSS libraries exist for interacting with Parquet storage; this proje
 ## Installation
 
 The recommended way to set up this project for development is using
-[Poetry](https://python-poetry.org/docs/) to install and manage a virtual Python
-environment. With Poetry installed, change into the project directory and run:
+[uv](https://docs.astral.sh/uv/)
+to install and manage a Python virtual environment.
+With uv installed, install the required Python version (see `pyproject.toml`). Example:
 
-    poetry install
+    uv python install 3.12
+
+Change into the project directory and run:
+
+    uv python pin 3.12
+    uv sync
+
+## Usage
 
 Activate the virtualenv like so:
 
-    poetry shell
+    source .venv/bin/activate
 
 To run Python commands in the activated virtualenv, thereafter run them as normal:
 
     python archiver.py --help
+
+To archive all files for a given date and then delete the originals, run the following command:
+
+    python archiver.py -d <YYYYmmdd> --delete-source
 
 ## Environment variables
 
@@ -38,7 +50,9 @@ Example using PyArrow:
 import pyarrow.parquet as pq
 import pyarrow.compute as pc
 
-table = pq.read_table("nginx_access_logs.parquet")
+table = pq.read_table("nginx_access_logs.parquet")  # Filename of the Parquet file.
 expr = pc.field("host") == "www.dbca.wa.gov.au"
 len(table.filter(expr))
 ```
+
+Reference: <https://arrow.apache.org/docs/python/index.html>
