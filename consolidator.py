@@ -182,7 +182,7 @@ def consolidate_logs(datestamp, hosts, container_name_json="access-logs-json", d
     # Consolidate JSON error logs into one CSV file.
     out_log_errors = consolidate_json_errors(datestamp, source_dir=temp_dir.name, destination_dir=temp_dir.name)
     # Upload consolidated CSV errors to blob storage.
-    upload_log(out_log_errors)
+    upload_log(out_log_errors, container_name="error-logs")
     # Optionally deleting JSON logs.
     if delete_source:
         delete_json_logs(datestamp, hosts, container_name=container_name_json)
