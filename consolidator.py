@@ -5,10 +5,9 @@ from tempfile import TemporaryDirectory
 
 import orjson as json
 import unicodecsv as csv
-from azure.storage.blob import BlobClient, ContainerClient
 from dotenv import load_dotenv
 
-from utils import configure_logging
+from utils import configure_logging, delete_logs, download_logs, upload_log
 
 # Load environment variables.
 load_dotenv()
@@ -19,70 +18,12 @@ CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 LOGGER = configure_logging()
 
 
-def download_json_logs(datestamp, hosts, destination_dir, container_name="access-logs-json"):
-    """Given the passed in datestamp, hosts list and destination directory, download logs from blob storage."""
-    json_blobs = []
-    container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
-    hosts_list = hosts.split(",")
-    for host in hosts_list:
-        # list_blobs returns a list of BlobProperties objects.
-        blob_list = container_client.list_blobs(name_starts_with=host)
-        for blob in blob_list:
-            if datestamp in blob.name:
-                json_blobs.append(blob)
-
-    if not json_blobs:  # Nil source data, abort.
-        LOGGER.info(f"No source data for datestamp {datestamp}, hosts {hosts}")
-        return
-
-    # Download JSON
-    for blob in json_blobs:
-        host, _ = blob.name.split("/")
-        # Download the blob locally with the name <datestamp>.<host>.access.json
-        dest_path = os.path.join(destination_dir, f"{datestamp}.{host}.access.json")
-        LOGGER.info(f"Downloading blob {blob.name} ({container_name} container) to {dest_path}")
-        blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob.name)
-
-        try:
-            with open(dest_path, "wb") as downloaded_blob:
-                download_stream = blob_client.download_blob()
-                downloaded_blob.write(download_stream.readall())
-        except Exception as e:
-            LOGGER.error(f"Exception during download of {blob.name}, aborting")
-            LOGGER.exception(e)
-            return
-
-    return True
-
-
-def delete_json_logs(datestamp, hosts, container_name="access-logs-json"):
-    """Given the passed in datestamp and hosts list, delete blobs from the container."""
-    json_blobs = []
-    container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
-    hosts_list = hosts.split(",")
-    for host in hosts_list:
-        blob_list = container_client.list_blobs(name_starts_with=host)
-        for blob in blob_list:
-            if datestamp in blob.name:
-                json_blobs.append(blob)
-
-    for blob in json_blobs:
-        blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob.name)
-        LOGGER.info(f"Deleting blob {blob.name} from {container_name} container")
-        try:
-            blob_client.delete_blob()
-        except Exception as e:
-            LOGGER.error(f"Exception during deletion of {blob.name}, aborting")
-            LOGGER.exception(e)
-            return
-
-
-def consolidate_json_access_requests(datestamp, source_dir, destination_dir):
-    """Given the passed-in datestamp, source_dir and destination_file, consolidate all access requests
+def consolidate_json_access_requests(timestamp, source_dir, destination_dir):
+    """Given the passed-in timestamp, source_dir and destination_dir, consolidate all access requests
     in JSON logs in the source into a single CSV file in destination."""
     loglist = []
     source_json_files = os.listdir(source_dir)
-    source_json_files = [f for f in source_json_files if f.startswith(datestamp)]
+    source_json_files = [f for f in source_json_files if f.startswith(timestamp)]
 
     for f in source_json_files:
         source = os.path.join(source_dir, f)
@@ -104,16 +45,14 @@ def consolidate_json_access_requests(datestamp, source_dir, destination_dir):
                             int(d["status"]),  # Transform str to int
                             int(float(d["request_time"]) * 1000 * 1000),  # Transform to microseconds
                             int(d["bytes_sent"]),  # Transform str to int
-                            re.sub(
-                                r"\r|\n|\"|'", "", d["user_agent"]
-                            ),  # Remove quotes and newlines in the User-Agent string
+                            re.sub(r"\r|\n|\"|'", "", d["user_agent"]),  # Remove quotes and newlines in the User-Agent string
                             d["ssouser"],
                         ]
                     )
                 except:  # Occasionally, parsing the log dict might throw an exception. Skip this logs.
                     pass
 
-    out_log = os.path.join(destination_dir, f"{datestamp}.nginx.access.csv")
+    out_log = os.path.join(destination_dir, f"{timestamp}.nginx.access.csv")
     LOGGER.info(f"Exporting to {out_log}")
     f = open(out_log, "wb")
     writer = csv.writer(f)
@@ -123,13 +62,13 @@ def consolidate_json_access_requests(datestamp, source_dir, destination_dir):
     return out_log
 
 
-def consolidate_json_errors(datestamp, source_dir, destination_dir):
-    """Given the passed-in datestamp, source_dir and destination_file, consolidate all errors
+def consolidate_json_errors(timestamp, source_dir, destination_dir):
+    """Given the passed-in timestamp, source_dir and destination_dir, consolidate all errors
     in JSON logs in `source_dir` into a single CSV file in `destination_dir`"""
     loglist = []
     source_json_files = os.listdir(source_dir)
-    source_json_files = [f for f in source_json_files if f.startswith(datestamp)]
-    pattern = re.compile(r"^(?P<datestamp>[\d\/]+\s[\d:]+)\s\[(?P<level>[a-z]+)\]\s(?P<message>.+$)")
+    source_json_files = [f for f in source_json_files if f.startswith(timestamp)]
+    pattern = re.compile(r"^(?P<timestamp>[\d\/]+\s[\d:]+)\s\[(?P<level>[a-z]+)\]\s(?P<message>.+$)")
 
     for f in source_json_files:
         source = os.path.join(source_dir, f)
@@ -141,11 +80,11 @@ def consolidate_json_errors(datestamp, source_dir, destination_dir):
                 log_line = d["log"]
                 try:
                     data = pattern.match(log_line).groupdict()
-                    loglist.append([data["datestamp"], data["level"], data["message"]])
+                    loglist.append([data["timestamp"], data["level"], data["message"]])
                 except:
                     pass
 
-    out_log = os.path.join(destination_dir, f"{datestamp}.nginx.errors.csv")
+    out_log = os.path.join(destination_dir, f"{timestamp}.nginx.errors.csv")
     LOGGER.info(f"Exporting to {out_log}")
     f = open(out_log, "wb")
     writer = csv.writer(f)
@@ -155,34 +94,31 @@ def consolidate_json_errors(datestamp, source_dir, destination_dir):
     return out_log
 
 
-def upload_log(source_path, container_name="access-logs", overwrite=True):
-    """
-    Upload a single log at `source_path` to Azure blob storage.
-    """
-    blob_name = os.path.basename(source_path)
-    blob_client = BlobClient.from_connection_string(CONN_STR, container_name, blob_name)
-
-    LOGGER.info(f"Uploading {source_path} to {container_name}")
-    with open(file=source_path, mode="rb") as data:
-        blob_client.upload_blob(data, overwrite=overwrite, validate_content=True)
-
-
-def consolidate_logs(datestamp, hosts, container_name_json="access-logs-json", delete_source=False):
-    # Use a temporary directory to download JSON logs into.
+def consolidate_logs(
+    timestamp,
+    hosts,
+    container_src="access-logs-json",
+    container_dest="access-logs",
+    container_dest_errors="error-logs",
+    delete_source=False,
+):
+    """Download logs for the specified timestamp and services, consolidate, upload and optionally delete the source logs."""
+    # Use a temporary directory to download JSON logs.
     temp_dir = TemporaryDirectory()
-    # Download JSON logs.
-    download_json_logs(datestamp, hosts, destination_dir=temp_dir.name, container_name=container_name_json)
-    # Consolidate JSON access request logs into one CSV file.
-    out_log = consolidate_json_access_requests(datestamp, source_dir=temp_dir.name, destination_dir=temp_dir.name)
-    # Upload consolidated CSV log to blob storage.
-    upload_log(out_log)
-    # Consolidate JSON error logs into one CSV file.
-    out_log_errors = consolidate_json_errors(datestamp, source_dir=temp_dir.name, destination_dir=temp_dir.name)
-    # Upload consolidated CSV errors to blob storage.
-    upload_log(out_log_errors, container_name="error-logs")
-    # Optionally deleting JSON logs.
-    if delete_source:
-        delete_json_logs(datestamp, hosts, container_name=container_name_json)
+    # Download Nginx JSON logs.
+    downloads = download_logs(timestamp, hosts, temp_dir.name, container_src, CONN_STR, True)
+    if downloads:
+        # Consolidate access request logs into one CSV file.
+        out_log = consolidate_json_access_requests(timestamp, temp_dir.name, temp_dir.name)
+        # Upload consolidated CSV log to blob storage.
+        upload_log(out_log, container_dest, CONN_STR)
+        # Consolidate error logs into one CSV file.
+        out_log_errors = consolidate_json_errors(timestamp, temp_dir.name, temp_dir.name)
+        # Upload consolidated CSV errors to blob storage.
+        upload_log(out_log_errors, container_dest_errors, CONN_STR)
+        # Optionally deleting JSON logs from blob storage.
+        if delete_source:
+            delete_logs(timestamp, hosts, container_src, CONN_STR)
 
 
 if __name__ == "__main__":
@@ -190,9 +126,9 @@ if __name__ == "__main__":
         description="A script to consolidate multiple JSON-formatted Nginx log files from different hosts into a single CSV file."
     )
     parser.add_argument(
-        "-d",
-        "--datestamp",
-        help="A datestamp value in the format %%Y%%m%%d%%h",
+        "-t",
+        "--timestamp",
+        help="A timestamp value to the nearest hour in the format YYYYmmddHH",
         action="store",
         required=True,
     )
@@ -204,18 +140,26 @@ if __name__ == "__main__":
         required=True,
     )
     parser.add_argument(
-        "-j",
-        "--json-container",
-        help="The source blob container name (optional)",
+        "-c",
+        "--container",
+        help="The source logs container name (optional, default 'access-logs-json')",
         default="access-logs-json",
         action="store",
         required=False,
     )
     parser.add_argument(
-        "-c",
-        "--container",
-        help="The destination blob container name (optional)",
+        "-d",
+        "--destination-container",
+        help="The destination container name (optional, default 'access-logs')",
         default="access-logs",
+        action="store",
+        required=False,
+    )
+    parser.add_argument(
+        "-e",
+        "--destination-container-errors",
+        help="The destination container name for error logs (optional, default 'error-logs')",
+        default="error-logs",
         action="store",
         required=False,
     )
@@ -227,8 +171,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     consolidate_logs(
-        datestamp=args.datestamp,
+        timestamp=args.timestamp,
         hosts=args.hosts,
-        container_name_json=args.json_container,
+        container_src=args.container,
+        container_dest=args.destination_container,
+        container_dest_errors=args.destination_container_errors,
         delete_source=args.delete_source,
     )

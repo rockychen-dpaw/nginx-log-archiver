@@ -1,32 +1,112 @@
 import logging
+import os
 import sys
 
+from azure.storage.blob import BlobClient, ContainerClient
 
-def configure_logging(logfile=None, azure_logfile=None):
-    """
-    Configure logging (stdout and file) for the default logger and for the `azure` logger.
-    """
+
+def configure_logging(log_level=None, azure_log_level=None):
+    """Configure logging (stdout and file) for the default logger and for the `azure` logger."""
     logger = logging.getLogger()
     logger.setLevel(logging.DEBUG)
     formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
     handler = logging.StreamHandler(sys.stdout)
-    handler.setLevel(logging.INFO)
+    if log_level:
+        handler.setLevel(log_level)
+    else:
+        handler.setLevel(logging.INFO)
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-    if logfile:
-        file_handler = logging.FileHandler(logfile)
-        file_handler.setLevel(logging.INFO)
-        file_handler.setFormatter(formatter)
-        logger.addHandler(file_handler)
 
     # Set the logging level for all azure-* libraries (the azure-storage-blob library uses this one).
     # Reference: https://learn.microsoft.com/en-us/azure/developer/python/sdk/azure-sdk-logging
     azure_logger = logging.getLogger("azure")
-    azure_logger.setLevel(logging.WARNING)
-    if azure_logfile:
-        file_handler = logging.FileHandler(azure_logfile)
-        file_handler.setLevel(logging.WARNING)
-        file_handler.setFormatter(formatter)
-        azure_logger.addHandler(file_handler)
+    if azure_log_level:
+        azure_logger.setLevel(azure_log_level)
+    else:
+        azure_logger.setLevel(logging.WARNING)
 
     return logger
+
+
+def download_logs(timestamp, hosts, destination_dir, container_name, conn_str, nginx_host_log=False, enable_logging=True):
+    """Given the passed in timestamp, hosts list and destination directory, download logs from blob storage."""
+    if enable_logging:
+        logger = logging.getLogger()
+
+    container_client = ContainerClient.from_connection_string(conn_str, container_name)
+    hosts_list = hosts.split(",")
+    log_list = []
+    for host in hosts_list:
+        # list_blobs returns a list of BlobProperties objects.
+        if nginx_host_log:
+            blob_list = container_client.list_blobs(name_starts_with=f"{host}/nginx_access.{timestamp}")
+        else:
+            blob_list = container_client.list_blobs(name_starts_with=f"{host}/{timestamp}")
+        log_list += [b for b in blob_list]
+
+    if not log_list:  # Nil source data, abort.
+        if enable_logging:
+            logger.info(f"No source data for timestamp {timestamp}, hosts {hosts}")
+        return
+
+    for blob in log_list:
+        host, name = blob.name.split("/")
+        dest_path = os.path.join(destination_dir, name)
+        blob_client = BlobClient.from_connection_string(conn_str, container_name, blob.name)
+        if enable_logging:
+            logger.info(f"Downloading blob {blob.name} ({container_name} container) to {dest_path}")
+
+        try:
+            with open(dest_path, "wb") as downloaded_blob:
+                download_stream = blob_client.download_blob()
+                downloaded_blob.write(download_stream.readall())
+        except Exception as e:
+            if enable_logging:
+                logger.error(f"Exception during download of {blob.name}, aborting")
+                logger.exception(e)
+            return
+
+    return True
+
+
+def delete_logs(timestamp, hosts, container_name, conn_str, enable_logging=True):
+    """Given the passed in timestamp and hosts list, delete blobs from the container."""
+    if enable_logging:
+        logger = logging.getLogger()
+
+    container_client = ContainerClient.from_connection_string(conn_str, container_name)
+    log_list = []
+    hosts_list = hosts.split(",")
+
+    for host in hosts_list:
+        # list_blobs returns a list of BlobProperties objects.
+        blob_list = container_client.list_blobs(name_starts_with=f"{host}/{timestamp}")
+        log_list += [b for b in blob_list]
+
+    for blob in log_list:
+        blob_client = BlobClient.from_connection_string(conn_str, container_name, blob.name)
+        if enable_logging:
+            logger.info(f"Deleting blob {blob.name} from {container_name} container")
+        try:
+            blob_client.delete_blob()
+        except Exception as e:
+            if enable_logging:
+                logger.error(f"Exception during deletion of {blob.name}, aborting")
+                logger.exception(e)
+            return
+
+    return True
+
+
+def upload_log(source_path, container_name, conn_str, overwrite=True, enable_logging=True):
+    """Upload a single log at `source_path` to Azure blob storage."""
+    blob_name = os.path.basename(source_path)
+    blob_client = BlobClient.from_connection_string(conn_str, container_name, blob_name)
+
+    if enable_logging:
+        logger = logging.getLogger()
+        logger.info(f"Uploading {source_path} to {container_name}")
+
+    with open(file=source_path, mode="rb") as data:
+        blob_client.upload_blob(data, overwrite=overwrite, validate_content=True)
