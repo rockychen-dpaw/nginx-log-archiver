@@ -18,9 +18,6 @@ CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
 # Configure logging.
 LOGGER = configure_logging()
 
-# Download access log for the nominated time, for each Nginx host
-hosts = ["az-nginx-003", "az-nginx-005"]
-
 
 def download_json_logs(datestamp, hosts, destination_dir, container_name="access-logs-json"):
     """Given the passed in datestamp, hosts list and destination directory, download logs from blob storage."""
