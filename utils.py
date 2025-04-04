@@ -52,7 +52,12 @@ def download_logs(timestamp, hosts, destination_dir, container_name, conn_str, n
 
     for blob in log_list:
         host, name = blob.name.split("/")
-        dest_path = os.path.join(destination_dir, name)
+        if nginx_host_log:
+            name = f"{timestamp}.{host}.access.json"
+            dest_path = os.path.join(destination_dir, name)
+        else:
+            dest_path = os.path.join(destination_dir, name)
+
         blob_client = BlobClient.from_connection_string(conn_str, container_name, blob.name)
         if enable_logging:
             logger.info(f"Downloading blob {blob.name} ({container_name} container) to {dest_path}")

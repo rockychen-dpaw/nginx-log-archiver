@@ -67,7 +67,7 @@ def consolidate_json_errors(timestamp, source_dir, destination_dir):
     in JSON logs in `source_dir` into a single CSV file in `destination_dir`"""
     loglist = []
     source_json_files = os.listdir(source_dir)
-    source_json_files = [f for f in source_json_files if f.startswith(timestamp)]
+    source_json_files = [f for f in source_json_files if f.startswith(timestamp) and f.endswith(".json")]
     pattern = re.compile(r"^(?P<timestamp>[\d\/]+\s[\d:]+)\s\[(?P<level>[a-z]+)\]\s(?P<message>.+$)")
 
     for f in source_json_files:
