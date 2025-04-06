@@ -151,7 +151,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d",
         "--datestamp",
-        help="A datestamp value in the format %%Y%%m%%d",
+        help="A datestamp value in the format YYmmdd",
         action="store",
         required=True,
     )

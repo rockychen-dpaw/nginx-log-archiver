@@ -263,6 +263,7 @@ dependencies = [
     { name = "orjson" },
     { name = "pyarrow" },
     { name = "python-dotenv" },
+    { name = "requests" },
     { name = "unicodecsv" },
 ]
 
@@ -277,6 +278,7 @@ requires-dist = [
     { name = "orjson", specifier = "==3.10.16" },
     { name = "pyarrow", specifier = "==19.0.1" },
     { name = "python-dotenv", specifier = "==1.1.0" },
+    { name = "requests", specifier = "==2.32.3" },
     { name = "unicodecsv", specifier = "==0.14.1" },
 ]
 

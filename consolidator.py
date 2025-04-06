@@ -4,6 +4,7 @@ import re
 from tempfile import TemporaryDirectory
 
 import orjson as json
+import requests
 import unicodecsv as csv
 from dotenv import load_dotenv
 
@@ -11,8 +12,10 @@ from utils import configure_logging, delete_logs, download_logs, upload_log
 
 # Load environment variables.
 load_dotenv()
-# Assumes a connection string secret present as an environment variable.
+# Assumes a Azure storage connection string is defined as an environment variable.
 CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
+# Optionally use the Sentry cron monitor, if that environment variable is defined.
+SENTRY_CRON_URL = os.getenv("SENTRY_CRON_URL")
 
 # Configure logging.
 LOGGER = configure_logging()
@@ -103,10 +106,15 @@ def consolidate_logs(
     delete_source=False,
 ):
     """Download logs for the specified timestamp and services, consolidate, upload and optionally delete the source logs."""
+    if SENTRY_CRON_URL:
+        LOGGER.info("Signalling Sentry monitor (in progress)")
+        requests.get(f"{SENTRY_CRON_URL}?status=in_progress")
+
     # Use a temporary directory to download JSON logs.
     temp_dir = TemporaryDirectory()
     # Download Nginx JSON logs.
     downloads = download_logs(timestamp, hosts, temp_dir.name, container_src, CONN_STR, True)
+
     if downloads:
         # Consolidate access request logs into one CSV file.
         out_log = consolidate_json_access_requests(timestamp, temp_dir.name, temp_dir.name)
@@ -119,6 +127,10 @@ def consolidate_logs(
         # Optionally deleting JSON logs from blob storage.
         if delete_source:
             delete_logs(timestamp, hosts, container_src, CONN_STR)
+
+    if SENTRY_CRON_URL:
+        LOGGER.info("Signalling Sentry monitor (completed)")
+        requests.get(f"{SENTRY_CRON_URL}?status=ok")
 
 
 if __name__ == "__main__":
