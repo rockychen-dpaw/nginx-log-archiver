@@ -104,14 +104,15 @@ def delete_logs(timestamp, hosts, container_name, conn_str, enable_logging=True)
     return True
 
 
-def upload_log(source_path, container_name, conn_str, overwrite=True, enable_logging=True):
-    """Upload a single log at `source_path` to Azure blob storage."""
-    blob_name = os.path.basename(source_path)
+def upload_log(source_path, container_name, conn_str, overwrite=True, enable_logging=True, blob_name=""):
+    """Upload a single log at `source_path` to Azure blob storage (`blob_name` destination name is optional)."""
+    if not blob_name:
+        blob_name = os.path.basename(source_path)
     blob_client = BlobClient.from_connection_string(conn_str, container_name, blob_name)
 
     if enable_logging:
         logger = logging.getLogger()
-        logger.info(f"Uploading {source_path} to {container_name}")
+        logger.info(f"Uploading {source_path} to container {container_name}/{blob_name}")
 
     with open(file=source_path, mode="rb") as data:
         blob_client.upload_blob(data, overwrite=overwrite, validate_content=True)

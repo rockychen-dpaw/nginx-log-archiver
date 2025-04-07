@@ -21,6 +21,11 @@ FROM python:3.12-slim-bookworm
 LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
 LABEL org.opencontainers.image.source=https://github.com/dbca-wa/nginx-log-archiver
 
+# Install system dependencies.
+RUN apt-get update \
+  && apt-get install -y git \
+  && rm -rf /var/lib/apt/lists/*
+
 # Create a non-root user.
 RUN groupadd -r -g 10001 app \
   && useradd -r -u 10001 -d /app -g app -N app
@@ -33,5 +38,5 @@ ENV PYTHONUNBUFFERED=1
 
 # Install the project.
 WORKDIR /app
-COPY archiver.py consolidator.py consolidator_fastly.py utils.py ./
+COPY archiver.py consolidator.py consolidator_fastly.py nginx_config_subdomain_auth.py utils.py ./
 USER app
