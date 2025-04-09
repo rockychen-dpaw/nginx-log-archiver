@@ -29,7 +29,24 @@ def configure_logging(log_level=None, azure_log_level=None):
     return logger
 
 
-def download_logs(timestamp, hosts, destination_dir, container_name, conn_str, nginx_host_log=False, enable_logging=True):
+def get_blob_client(conn_str, container_name, blob_name, max_put=16 * 1024 * 1024, conn_timeout=60):
+    """
+    Return a BlobClient class having defaults to account for a slower internet connection.
+    The parent class defaults are 64MB and 20s.
+    https://learn.microsoft.com/en-us/python/api/azure-storage-blob/azure.storage.blob.blobclient?view=azure-python#azure-storage-blob-blobclient-from-connection-string
+    """
+    return BlobClient.from_connection_string(
+        conn_str,
+        container_name,
+        blob_name,
+        max_single_put_size=max_put,
+        connection_timeout=conn_timeout,
+    )
+
+
+def download_logs(
+    timestamp, hosts, destination_dir, container_name, conn_str, nginx_host_log=False, enable_logging=True, slow_connection=False
+):
     """Given the passed in timestamp, hosts list and destination directory, download logs from blob storage."""
     if enable_logging:
         logger = logging.getLogger()
@@ -58,7 +75,11 @@ def download_logs(timestamp, hosts, destination_dir, container_name, conn_str, n
         else:
             dest_path = os.path.join(destination_dir, name)
 
-        blob_client = BlobClient.from_connection_string(conn_str, container_name, blob.name)
+        if slow_connection:
+            blob_client = get_blob_client(conn_str, container_name, blob.name)
+        else:
+            blob_client = BlobClient.from_connection_string(conn_str, container_name, blob.name)
+
         if enable_logging:
             logger.info(f"Downloading blob {blob.name} ({container_name} container) to {dest_path}")
 
@@ -75,7 +96,7 @@ def download_logs(timestamp, hosts, destination_dir, container_name, conn_str, n
     return True
 
 
-def delete_logs(timestamp, hosts, container_name, conn_str, enable_logging=True):
+def delete_logs(timestamp, hosts, container_name, conn_str, nginx_host_log=False, enable_logging=True):
     """Given the passed in timestamp and hosts list, delete blobs from the container."""
     if enable_logging:
         logger = logging.getLogger()
@@ -85,8 +106,10 @@ def delete_logs(timestamp, hosts, container_name, conn_str, enable_logging=True)
     hosts_list = hosts.split(",")
 
     for host in hosts_list:
-        # list_blobs returns a list of BlobProperties objects.
-        blob_list = container_client.list_blobs(name_starts_with=f"{host}/{timestamp}")
+        if nginx_host_log:
+            blob_list = container_client.list_blobs(name_starts_with=f"{host}/nginx_access.{timestamp}")
+        else:
+            blob_list = container_client.list_blobs(name_starts_with=f"{host}/{timestamp}")
         log_list += [b for b in blob_list]
 
     for blob in log_list:
@@ -104,11 +127,15 @@ def delete_logs(timestamp, hosts, container_name, conn_str, enable_logging=True)
     return True
 
 
-def upload_log(source_path, container_name, conn_str, overwrite=True, enable_logging=True, blob_name=""):
+def upload_log(source_path, container_name, conn_str, overwrite=True, enable_logging=True, blob_name="", slow_connection=False):
     """Upload a single log at `source_path` to Azure blob storage (`blob_name` destination name is optional)."""
     if not blob_name:
         blob_name = os.path.basename(source_path)
-    blob_client = BlobClient.from_connection_string(conn_str, container_name, blob_name)
+
+    if slow_connection:
+        blob_client = get_blob_client(conn_str, container_name, blob_name)
+    else:
+        blob_client = BlobClient.from_connection_string(conn_str, container_name, blob_name)
 
     if enable_logging:
         logger = logging.getLogger()

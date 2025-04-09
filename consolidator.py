@@ -113,7 +113,7 @@ def consolidate_logs(
     # Use a temporary directory to download JSON logs.
     temp_dir = TemporaryDirectory()
     # Download Nginx JSON logs.
-    downloads = download_logs(timestamp, hosts, temp_dir.name, container_src, CONN_STR, True)
+    downloads = download_logs(timestamp, hosts, temp_dir.name, container_src, CONN_STR, True, slow_connection=True)
 
     if downloads:
         # Consolidate access request logs into one CSV file.
@@ -123,10 +123,10 @@ def consolidate_logs(
         # Consolidate error logs into one CSV file.
         out_log_errors = consolidate_json_errors(timestamp, temp_dir.name, temp_dir.name)
         # Upload consolidated CSV errors to blob storage.
-        upload_log(out_log_errors, container_dest_errors, CONN_STR)
+        upload_log(out_log_errors, container_dest_errors, CONN_STR, slow_connection=True)
         # Optionally deleting JSON logs from blob storage.
         if delete_source:
-            delete_logs(timestamp, hosts, container_src, CONN_STR)
+            delete_logs(timestamp, hosts, container_src, CONN_STR, True)
 
     if SENTRY_CRON_URL:
         LOGGER.info("Signalling Sentry monitor (completed)")
