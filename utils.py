@@ -96,37 +96,6 @@ def download_logs(
     return True
 
 
-def delete_logs(timestamp, hosts, container_name, conn_str, nginx_host_log=False, enable_logging=True):
-    """Given the passed in timestamp and hosts list, delete blobs from the container."""
-    if enable_logging:
-        logger = logging.getLogger()
-
-    container_client = ContainerClient.from_connection_string(conn_str, container_name)
-    log_list = []
-    hosts_list = hosts.split(",")
-
-    for host in hosts_list:
-        if nginx_host_log:
-            blob_list = container_client.list_blobs(name_starts_with=f"{host}/nginx_access.{timestamp}")
-        else:
-            blob_list = container_client.list_blobs(name_starts_with=f"{host}/{timestamp}")
-        log_list += [b for b in blob_list]
-
-    for blob in log_list:
-        blob_client = BlobClient.from_connection_string(conn_str, container_name, blob.name)
-        if enable_logging:
-            logger.info(f"Deleting blob {blob.name} from {container_name} container")
-        try:
-            blob_client.delete_blob()
-        except Exception as e:
-            if enable_logging:
-                logger.error(f"Exception during deletion of {blob.name}, aborting")
-                logger.exception(e)
-            return
-
-    return True
-
-
 def upload_log(source_path, container_name, conn_str, overwrite=True, enable_logging=True, blob_name="", slow_connection=False):
     """Upload a single log at `source_path` to Azure blob storage (`blob_name` destination name is optional)."""
     if not blob_name:

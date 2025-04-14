@@ -8,7 +8,7 @@ import requests
 import unicodecsv as csv
 from dotenv import load_dotenv
 
-from utils import configure_logging, delete_logs, download_logs, upload_log
+from utils import configure_logging, download_logs, upload_log
 
 # Load environment variables.
 load_dotenv()
@@ -103,9 +103,8 @@ def consolidate_logs(
     container_src="access-logs-json",
     container_dest="access-logs",
     container_dest_errors="error-logs",
-    delete_source=False,
 ):
-    """Download logs for the specified timestamp and services, consolidate, upload and optionally delete the source logs."""
+    """Download logs for the specified timestamp and services, consolidate and upload the source logs."""
     if SENTRY_CRON_URL:
         LOGGER.info("Signalling Sentry monitor (in progress)")
         requests.get(f"{SENTRY_CRON_URL}?status=in_progress")
@@ -124,9 +123,6 @@ def consolidate_logs(
         out_log_errors = consolidate_json_errors(timestamp, temp_dir.name, temp_dir.name)
         # Upload consolidated CSV errors to blob storage.
         upload_log(out_log_errors, container_dest_errors, CONN_STR, slow_connection=True)
-        # Optionally deleting JSON logs from blob storage.
-        if delete_source:
-            delete_logs(timestamp, hosts, container_src, CONN_STR, True)
 
     if SENTRY_CRON_URL:
         LOGGER.info("Signalling Sentry monitor (completed)")
@@ -175,12 +171,6 @@ if __name__ == "__main__":
         action="store",
         required=False,
     )
-    parser.add_argument(
-        "--delete-source",
-        help="Delete the source CSV after processing (optional)",
-        action="store_true",
-        required=False,
-    )
     args = parser.parse_args()
     consolidate_logs(
         timestamp=args.timestamp,
@@ -188,5 +178,4 @@ if __name__ == "__main__":
         container_src=args.container,
         container_dest=args.destination_container,
         container_dest_errors=args.destination_container_errors,
-        delete_source=args.delete_source,
     )

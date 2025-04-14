@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 import unicodecsv as csv
 from dotenv import load_dotenv
 
-from utils import configure_logging, delete_logs, download_logs, upload_log
+from utils import configure_logging, download_logs, upload_log
 
 # Load environment variables.
 load_dotenv()
@@ -47,8 +47,8 @@ def consolidate_logfiles(timestamp, source_dir, destination_dir):
     return out_log
 
 
-def consolidate_fastly_logs(timestamp, services, container_src="fastly", container_dest="fastly", delete_source=False):
-    """Download logs for the specified timestamp and services, consolidate, upload and optionally delete the source logs."""
+def consolidate_fastly_logs(timestamp, services, container_src="fastly", container_dest="fastly"):
+    """Download logs for the specified timestamp and services, consolidate and upload the source logs."""
     # Use a temporary directory to download logs.
     temp_dir = TemporaryDirectory()
     # Download Fastly logs.
@@ -58,9 +58,6 @@ def consolidate_fastly_logs(timestamp, services, container_src="fastly", contain
         out_log = consolidate_logfiles(timestamp, temp_dir.name, temp_dir.name)
         # Upload consolidated CSV log to blob storage.
         upload_log(out_log, container_dest, CONN_STR)
-        # Optionally deleting source logs from blob storage.
-        if delete_source:
-            delete_logs(timestamp, services, container_src, CONN_STR)
 
 
 if __name__ == "__main__":
@@ -97,17 +94,10 @@ if __name__ == "__main__":
         action="store",
         required=False,
     )
-    parser.add_argument(
-        "--delete-source",
-        help="Delete the source logs after processing (optional, default false)",
-        action="store_true",
-        required=False,
-    )
     args = parser.parse_args()
     consolidate_fastly_logs(
         timestamp=args.timestamp,
         services=args.services,
         container_src=args.container,
         container_dest=args.destination_container,
-        delete_source=args.delete_source,
     )
