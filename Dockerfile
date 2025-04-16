@@ -38,5 +38,5 @@ ENV PYTHONUNBUFFERED=1
 
 # Install the project.
 WORKDIR /app
-COPY archiver.py consolidator.py consolidator_fastly.py nginx_config_subdomain_auth.py utils.py ./
+COPY *.py ./
 USER app
