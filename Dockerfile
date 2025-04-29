@@ -23,7 +23,7 @@ LABEL org.opencontainers.image.source=https://github.com/dbca-wa/nginx-log-archi
 
 # Install system dependencies.
 RUN apt-get update \
-  && apt-get install -y git \
+  && apt-get install -y --no-install-recommends git \
   && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user.
@@ -32,9 +32,9 @@ RUN groupadd -r -g 10001 app \
 
 COPY --from=builder_base --chown=app:app /app /app
 # Make sure we use the virtualenv by default
-ENV PATH="/app/.venv/bin:$PATH"
-# Run Python unbuffered
-ENV PYTHONUNBUFFERED=1
+ENV PATH="/app/.venv/bin:$PATH" \
+  # Run Python unbuffered
+  PYTHONUNBUFFERED=1
 
 # Install the project.
 WORKDIR /app
