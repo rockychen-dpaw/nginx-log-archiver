@@ -14,10 +14,14 @@ dependencies = [
   "unicodecsv==0.14.1",
   "requests==2.32.3",
   "crossplane==0.5.8",
+  "msal==1.32.3",
+  "ipython>=8.31.0",
 ]
 
 [dependency-groups]
-dev = ["ipython >= 8.31.0"]
+dev = [
+    "ipdb>=0.13.13",
+]
 
 [tool.ruff]
 line-length = 140
