@@ -74,15 +74,25 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
     then delete the original CSV-formatted logs.
     """
     # Validate the supplied datestamp value.
+    d = None
     try:
-        datetime.strptime(datestamp, "%Y%m%d")
-    except Exception as e:
+        d = datetime.strptime(datestamp, "%Y%m%d")
+    except Exception:
+        pass
+    try:
+        d = datetime.strptime(datestamp, "%Y-%m-%d")
+    except Exception:
+        pass
+
+    if not d:
         LOGGER.warning(f"Invalid datestamp value: {e}")
         return
 
+    LOGGER.info(f"Enumerating blobs in container {container_name} starting with {datestamp}")
     container_client = ContainerClient.from_connection_string(CONN_STR, container_name)
     blob_list = container_client.list_blobs(name_starts_with=datestamp)
     csv_blobs = [blob.name for blob in blob_list]
+
     if not csv_blobs:  # Nil source data, abort.
         LOGGER.info(f"No source data for datestamp {datestamp}")
         return
@@ -91,7 +101,7 @@ def archive_logs(datestamp, container_name="access-logs", delete_source=False):
 
     # Use a temporary directory to download CSV logs into.
     csv_dir = TemporaryDirectory()
-    downloaded = download_logs(datestamp, csv_dir.name)
+    downloaded = download_logs(datestamp, csv_dir.name, container_name)
     if not downloaded:
         return
 
@@ -151,7 +161,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "-d",
         "--datestamp",
-        help="A datestamp value in the format YYmmdd",
+        help="A datestamp value in the format YYYYmmdd or YYYY-mm-dd (Fastly logs)",
         action="store",
         required=True,
     )
