@@ -14,14 +14,12 @@ dependencies = [
   "unicodecsv==0.14.1",
   "requests==2.32.3",
   "crossplane==0.5.8",
-  "msal==1.32.3",
-  "ipython>=8.31.0",
+  "ipython==9.2.0",
+  "azure-cli==2.71.0",
 ]
 
 [dependency-groups]
-dev = [
-    "ipdb>=0.13.13",
-]
+dev = ["ipdb>=0.13.13"]
 
 [tool.ruff]
 line-length = 140
