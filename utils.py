@@ -1,15 +1,16 @@
 import logging
 import os
+import subprocess
 import sys
 
 from azure.storage.blob import BlobClient, ContainerClient
 
 
 def configure_logging(log_level=None, azure_log_level=None):
-    """Configure logging (stdout and file) for the default logger and for the `azure` logger."""
+    """Configure logging for the default logger and for the `azure` logger."""
     logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG)
-    formatter = logging.Formatter("%(asctime)s | %(levelname)s | %(message)s")
+    logger.setLevel(logging.INFO)
+    formatter = logging.Formatter("{asctime} | {levelname} | {message}", style="{")
     handler = logging.StreamHandler(sys.stdout)
     if log_level:
         handler.setLevel(log_level)
@@ -112,3 +113,20 @@ def upload_log(source_path, container_name, conn_str, overwrite=True, enable_log
 
     with open(file=source_path, mode="rb") as data:
         blob_client.upload_blob(data, overwrite=overwrite, validate_content=True)
+
+
+def clone_repo(dest_path, github_access_token, github_repo, enable_logging=True):
+    """Clone the GitHub repository to `dest_path`."""
+    cmd = f"git clone --quiet --depth=1 https://{github_access_token}@{github_repo} {dest_path}"
+    if enable_logging:
+        logger = logging.getLogger()
+        logger.info(f"Cloning https://{github_repo} to {dest_path}")
+
+    try:
+        subprocess.check_call(cmd, shell=True)
+        return os.listdir(dest_path)
+    except subprocess.CalledProcessError as e:
+        if enable_logging:
+            logger.warning("Error cloning the repository")
+            logger.exception(e)
+        return False

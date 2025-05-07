@@ -1,38 +1,23 @@
 import argparse
 import os
-import subprocess
 from tempfile import NamedTemporaryFile, TemporaryDirectory
 
 import crossplane
 import unicodecsv as csv
 from dotenv import load_dotenv
 
-from utils import configure_logging, upload_log
+from utils import clone_repo, configure_logging, upload_log
 
 # Load environment variables.
 load_dotenv()
 # Assumes an Azure storage connection string is defined as an environment variable.
 CONN_STR = os.getenv("AZURE_STORAGE_CONNECTION_STRING")
-# Assumes an access token secret is present as an environment variable.
+# Assumes a GitHub access token secret is present as an environment variable.
 GITHUB_ACCESS_TOKEN = os.getenv("GITHUB_ACCESS_TOKEN")
 GITHUB_REPO = os.getenv("GITHUB_REPO")
 
 # Configure logging.
 LOGGER = configure_logging()
-
-
-def clone_repo(dest_path):
-    """Clone the GitHub repository to `dest_path`."""
-    cmd = f"git clone --depth=1 https://{GITHUB_ACCESS_TOKEN}@{GITHUB_REPO} {dest_path}"
-    LOGGER.info(f"Cloning https://{GITHUB_REPO} to {dest_path}")
-
-    try:
-        subprocess.check_call(cmd, shell=True)
-        return os.listdir(dest_path)
-    except subprocess.CalledProcessError as e:
-        LOGGER.warning("Error cloning the repository")
-        LOGGER.exception(e)
-        return False
 
 
 def parse_nginx_config(dest_path):
@@ -82,7 +67,8 @@ def parse_nginx_config(dest_path):
 def parse_nginx(container_dest="analytics"):
     """Clone the Nginx config to a temporary directory, parse it and upload the summary to a container."""
     repo_dest = TemporaryDirectory()
-    cloned_repo = clone_repo(repo_dest.name)
+    cloned_repo = clone_repo(repo_dest.name, GITHUB_ACCESS_TOKEN, GITHUB_REPO)
+
     if cloned_repo:
         # Parse the Nginx conf to a temporary file.
         nginx_conf = parse_nginx_config(os.path.join(repo_dest.name, "nginx", "nginx.conf"))
