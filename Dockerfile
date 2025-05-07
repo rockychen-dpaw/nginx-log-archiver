@@ -21,9 +21,12 @@ FROM python:3.12-slim-bookworm
 LABEL org.opencontainers.image.authors=asi@dbca.wa.gov.au
 LABEL org.opencontainers.image.source=https://github.com/dbca-wa/nginx-log-archiver
 
-# Install system dependencies.
+# Install system dependencies (inc Azure CLI tools).
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends git \
+  && apt-get install -y --no-install-recommends curl git \
+  # Install the Azure CLI tools
+  && curl -sL https://aka.ms/InstallAzureCLIDeb | bash \
   && rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user.
@@ -33,7 +36,7 @@ RUN groupadd -r -g 10001 app \
 COPY --from=builder_base --chown=app:app /app /app
 # Make sure we use the virtualenv by default
 ENV PATH="/app/.venv/bin:$PATH" \
-  # Run Python unbuffered
+  # Run Python unbuffered:
   PYTHONUNBUFFERED=1
 
 # Install the project.
