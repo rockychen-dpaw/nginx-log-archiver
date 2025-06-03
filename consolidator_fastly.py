@@ -33,13 +33,16 @@ def consolidate_logfiles(timestamp, source_dir, destination_dir):
             for row in reader:
                 # Get the timestamp to sort on, plus the entire row.
                 loglist.append([row[0], row])
+            log.close()
 
     out_log = os.path.join(destination_dir, f"{timestamp}:00:00Z.nginx.access.csv")
     LOGGER.info(f"Exporting to {out_log}")
     f = open(out_log, "wb")
     writer = csv.writer(f)
     for row in sorted(loglist):
-        if len(row[1]) == 12:  # Skip badly-parsed rows.
+        if len(row[1]) < 12:  # Skip badly-parsed rows.
+            continue
+        else:
             # Just append the row, not the timestamp value.
             writer.writerow(row[1])
 
